@@ -11,8 +11,8 @@ from jwcrypto.common import JWException
 from fastapi import Header, HTTPException
 
 
-WAITING_ROOM_API_URL = "http://localhost:8000/waiting-room"
-WAITING_ROOM_EVENT_ID = "sample"
+WAITING_ROOM_API_URL = "https://d3hzncga2oz8ks.cloudfront.net"
+WAITING_ROOM_EVENT_ID = "Sample"
 ISSUER = os.environ.get("ISSUER")
 
 
@@ -23,15 +23,19 @@ def check_current_position(request_id: str):
         "request_id": request_id
     }
     body = requests.get(WAITING_ROOM_API_URL + "/queue_num", params=params).json()
-    return body["queue_number"]
+    queue_number = int(body["queue_number"])
+    print(queue_number)
+    return queue_number
 
 def check_serving_number():
     body = requests.get(WAITING_ROOM_API_URL + "/serving_num", params={"event_id": WAITING_ROOM_EVENT_ID}).json()
-    return body["serving_counter"]
+    serving_counter = int(body["serving_counter"])
+    print(serving_counter)
+    return serving_counter
 
 
 def check_user_eligibility(request_id: str):
-    if  check_current_position(request_id) <= check_serving_number():
+    if check_current_position(request_id) <= check_serving_number():
         return True
     else:
         return False
@@ -125,10 +129,15 @@ user = APIRouter()
 
 @user.get("/assign_queue_number")
 async def assign_queue_number():
-    body = requests.post(WAITING_ROOM_API_URL + "/assign_queue_number", json={"event_id": WAITING_ROOM_EVENT_ID}).json()
-    return {
-        "request_id": body["api_request_id"]
-    }
+    response = requests.post(WAITING_ROOM_API_URL + "/assign_queue_num", json={"event_id": WAITING_ROOM_EVENT_ID})
+    body = response.json()
+    if response.status_code == 200:
+        return {
+            "message": body.get("message", "Queue number assigned successfully"),
+            "data": body
+        }
+    else:
+        raise HTTPException(status_code=response.status_code, detail=body.get("message", "Failed to assign queue number"))
     
 @user.get("/check_queue_number")
 async def check_queue_number(request_id: str):
