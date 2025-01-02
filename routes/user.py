@@ -150,6 +150,7 @@ async def get_single_user(id: int, authorization: str = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization token is missing")
     
+    
     token = authorization.split(" ")[1] if " " in authorization else authorization
     if not verify_token(token):
         raise HTTPException(status_code=403, detail="Permission denied: Invalid token")
