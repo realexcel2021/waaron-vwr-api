@@ -12,7 +12,7 @@ from fastapi import Header, HTTPException
 
 
 WAITING_ROOM_API_URL = "http://localhost:8000/waiting-room"
-WAITING_ROOM_EVENT_ID = "evnet-1"
+WAITING_ROOM_EVENT_ID = "sample"
 ISSUER = os.environ.get("ISSUER")
 
 
@@ -150,7 +150,7 @@ async def get_single_user(id: int, authorization: str = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization token is missing")
     
-    
+
     token = authorization.split(" ")[1] if " " in authorization else authorization
     if not verify_token(token):
         raise HTTPException(status_code=403, detail="Permission denied: Invalid token")
