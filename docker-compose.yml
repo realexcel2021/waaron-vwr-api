@@ -1,7 +1,6 @@
 services:
   mysql:
     image: mysql:8.0
-    container_name: mysql_database
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: blinks1234
@@ -12,6 +11,23 @@ services:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+
+  api:
+    build: .
+    restart: always
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mysql
+    environment:
+      WAITING_ROOM_API_URL: "https://d222kaz4akmu65.cloudfront.net"
+      WAITING_ROOM_EVENT_ID: "Sample"
+      ISSUER: "https://rqs7esknt7.execute-api.eu-west-2.amazonaws.com/api"
+      DB_USER: "fastapi"
+      DB_PASSWORD: "blinks123"
+      DB_HOST: "mysql"
+      DB_PORT: "3306"
+      DB_NAME: "test"
 
 volumes:
   mysql_data:

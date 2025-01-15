@@ -11,9 +11,10 @@ from jwcrypto.common import JWException
 from fastapi import Header, HTTPException
 
 
-WAITING_ROOM_API_URL = "https://d3hzncga2oz8ks.cloudfront.net"
-WAITING_ROOM_EVENT_ID = "Sample"
-ISSUER = os.environ.get("ISSUER")
+WAITING_ROOM_API_URL = os.getenv("WAITING_ROOM_API_URL")
+WAITING_ROOM_EVENT_ID = os.getenv("WAITING_ROOM_EVENT_ID")
+ISSUER = os.getenv("ISSUER")
+
 
 
 def check_current_position(request_id: str):
@@ -24,13 +25,11 @@ def check_current_position(request_id: str):
     }
     body = requests.get(WAITING_ROOM_API_URL + "/queue_num", params=params).json()
     queue_number = int(body["queue_number"])
-    print(queue_number)
     return queue_number
 
 def check_serving_number():
     body = requests.get(WAITING_ROOM_API_URL + "/serving_num", params={"event_id": WAITING_ROOM_EVENT_ID}).json()
     serving_counter = int(body["serving_counter"])
-    print(serving_counter)
     return serving_counter
 
 
@@ -40,15 +39,16 @@ def check_user_eligibility(request_id: str):
     else:
         return False
 
+
 def generate_token(event_id: str, request_id: str):
     data = {
         "event_id": event_id,
         "request_id": request_id
     }
+
     body = requests.post(WAITING_ROOM_API_URL + "/generate_token", json=data).json()
+
     return body
-
-
 
 
 def get_public_key():
@@ -57,7 +57,8 @@ def get_public_key():
     public JWK from the closest location
     """
     # Bandit B108: /tmp directory is ephemeral as this is ran on Lambda
-    local_key_file = "/tmp/jwks.json" # nosec
+    #local_key_file = "/tmp/jwks.json" # nosec
+    local_key_file = "jwks.json"
     key = {}
     if os.path.isfile(local_key_file):
         # retrieve from the local file
@@ -68,6 +69,7 @@ def get_public_key():
         api_endpoint = f'{WAITING_ROOM_API_URL}/public_key?event_id={WAITING_ROOM_EVENT_ID}'
         try:
             response = requests.get(api_endpoint, timeout=60)
+            print(response.status_code)
             if response.status_code == 200:
                 with open(local_key_file, 'wt', encoding='utf-8') as cache_file:
                     cache_file.write(response.text)
@@ -88,7 +90,9 @@ def verify_token_sig(token):
     try:
         key = jwk.JWK(**pubkey_dict)
         verified = jwt.JWT(key=key, jwt=token)
+        print(json.loads(verified.claims))
         return json.loads(verified.claims)
+
     except JWException:
         # signature is invalid or token has expired
         print('signature is invalid or token has expired')
@@ -123,8 +127,6 @@ def verify_token(token, use='access'):
     return False
 
 
-
-
 user = APIRouter()
 
 @user.get("/assign_queue_number")
@@ -138,7 +140,18 @@ async def assign_queue_number():
         }
     else:
         raise HTTPException(status_code=response.status_code, detail=body.get("message", "Failed to assign queue number"))
-    
+
+@user.get("/waiting_num")
+async def waiting_num():
+    response = requests.get(WAITING_ROOM_API_URL + "/waiting_num", params={"event_id": WAITING_ROOM_EVENT_ID})
+    body = response.json()
+    if response.status_code == 200:
+        return {
+            "waiting_number": body.get("waiting_num", 0)
+        }
+    else:
+        raise HTTPException(status_code=response.status_code, detail=body.get("message", "Failed to retrieve waiting number"))
+
 @user.get("/check_queue_number")
 async def check_queue_number(request_id: str):
     if check_user_eligibility(request_id):
@@ -147,12 +160,21 @@ async def check_queue_number(request_id: str):
         }
     else: 
         return {
-        "queue_number": f"Your current position is {check_current_position(request_id)}"
+        "queue_number": check_current_position(request_id)
         }
     
+
+
 @user.get("/")
-async def get_all_users():
-    return conn.execute(users.select()).mappings().all()
+async def get_all_users(authorization: str = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization token is missing")
+    token = authorization.split(" ")[1] if " " in authorization else authorization
+    if verify_token(token):
+        return conn.execute(users.select()).mappings().all()
+    else:
+        raise HTTPException(status_code=403, detail="Permission denied: Invalid token")    
+    
 
 @user.get("/{id}")
 async def get_single_user(id: int, authorization: str = Header(None)):
@@ -162,21 +184,26 @@ async def get_single_user(id: int, authorization: str = Header(None)):
 
     token = authorization.split(" ")[1] if " " in authorization else authorization
     if not verify_token(token):
-        raise HTTPException(status_code=403, detail="Permission denied: Invalid token")
+        raise HTTPException(status_code=403, detail="Permission denied: Invalid or Expired token")
     
     return conn.execute(users.select().where(users.c.id == id)).mappings().all()
 
 @user.post("/")
-async def create_user(user: User):
-    
-    conn.execute(users.insert().values(
-        name=user.name,
-        email=user.email,
-        password=user.password
-    ))
-    conn.commit()
-    return conn.execute(users.select()).mappings().all()
+async def create_user(user: User, authorization: str = Header(None)):
 
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization token is missing")    
+    token = authorization.split(" ")[1] if " " in authorization else authorization
+    if verify_token(token):
+        conn.execute(users.insert().values(
+            name=user.name,
+            email=user.email,
+            password=user.password
+        ))
+        conn.commit()
+        return conn.execute(users.select()).mappings().all()
+    else:
+        raise HTTPException(status_code=403, detail="Permission denied: Invalid token")
 
 @user.put("/{id}")
 async def update_user(id: int, user: User):
