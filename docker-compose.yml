@@ -11,25 +11,40 @@ services:
       - "3306"
     volumes:
       - mysql_data:/var/lib/mysql
+    networks:
+      - docker-net
 
   api:
+    image: sheriffexcel/waaron-vwr-api
     build: .
     restart: always
     ports:
-      - "8000"
+      - "80:8000"
     expose:
       - 8000
     depends_on:
       - mysql
     environment:
-      WAITING_ROOM_API_URL: "https://d222kaz4akmu65.cloudfront.net"
-      WAITING_ROOM_EVENT_ID: "Sample"
-      ISSUER: "https://rqs7esknt7.execute-api.eu-west-2.amazonaws.com/api"
+      WAITING_ROOM_API_URL: https://d1gv7fyivejatk.cloudfront.net
+      WAITING_ROOM_EVENT_ID: Sample
+      ISSUER: https://sbf72ryw56.execute-api.eu-west-2.amazonaws.com/api
       DB_USER: "fastapi"
       DB_PASSWORD: "blinks123"
       DB_HOST: "mysql"
       DB_PORT: "3306"
       DB_NAME: "test"
+    networks:
+      - docker-net
+
+  frontend:
+    image: sheriffexcel/waaron-vwr-ui
+    ports:
+      - "8080:80"
+    networks:
+      - docker-net
 
 volumes:
   mysql_data:
+
+networks:
+  docker-net:
